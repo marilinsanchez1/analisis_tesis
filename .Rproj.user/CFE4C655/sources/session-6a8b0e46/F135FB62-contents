@@ -1,0 +1,277 @@
+---
+title: "tesis_grado"
+format: html
+editor: visual
+---
+
+```{r}
+#| label: setup
+
+source('https://inkaverse.com/setup.r')
+
+library(googlesheets4)
+library(dplyr)
+```
+
+```{r}
+gs <- "https://docs.google.com/spreadsheets/d/1rXyxAFP6_3B07Bao6n6iNVQTelzpieGEApLEG4y5N1Y/edit?gid=15317186#gid=15317186"
+
+fb <- read_sheet(gs, sheet = "fb") %>%
+  mutate(
+    Clon = factor(case_when(
+      Trat %in% c("T1","T2","T3","T4") ~ "Tropical",
+      Trat %in% c("T5","T6","T7","T8") ~ "Magenta"
+    ), levels = c("Tropical","Magenta")),
+    Sustrato = factor(case_when(
+      Trat %in% c("T1","T5") ~ "Cascarilla",
+      Trat %in% c("T2","T6") ~ "Bocashi",
+      Trat %in% c("T3","T7") ~ "Fibra_coco",
+      Trat %in% c("T4","T8") ~ "Fibra_palma"
+    ), levels = c("Cascarilla","Bocashi","Fibra_coco","Fibra_palma")),
+    Rep = factor(repeticion)
+  )
+str(fb)
+```
+
+```{r}
+fb <- fb %>%
+  group_by(Trat, Clon, Sustrato, Rep) %>%
+  summarise(
+    altura_30    = mean(altura_30,    na.rm = TRUE),
+    diametro_60  = mean(diametro_60,  na.rm = TRUE),
+    longitud_150 = mean(longitud_150, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+#graficar
+
+```{r}
+ggplot(fb, aes(x = Sustrato, y = altura_30, fill = Clon)) +
+  geom_boxplot(position = position_dodge(width = 0.8), alpha = 0.8) +
+  labs(
+    title = "Altura a los 30 días por Sustrato y Clon",
+    x = "Sustrato",
+    y = "Altura a los 30 días (cm)",
+    fill = "Clon"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "top"
+  )
+```
+
+ANOVA
+
+ANOVA factorial 2x4 en DCA \# Modelo:
+
+Yijk = mu + alpha_i + beta_j + (alpha\*beta)ij + eijk
+
+#-------------ANOVA DE ALTURA A LOS 30 DÍAS--------------
+
+```{r}
+mod_altura <- aov(altura_30 ~ Clon * Sustrato, data = fb)
+summary(mod_altura)
+
+anova (mod_altura)
+
+plot (mod_altura)
+```
+
+Variable: Diametro a los 60 días
+
+```{r}
+mod_diametro <- aov(diametro_60 ~ Clon * Sustrato, data = fb)
+summary(mod_diametro)
+anova(mod_diametro)
+plot (mod_diametro)
+```
+
+```{r}
+ggplot(fb, aes(x = Sustrato, y = diametro_60, fill = Clon)) +
+  geom_boxplot(position = position_dodge(width = 0.8), alpha = 0.8) +
+  labs(
+    title = "Diámetro  a los 60 días por Sustrato y Clon",
+    x = "Sustrato",
+    y = "Diámetro a los 60 días (mm)",
+    fill = "Clon"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "top"
+  )
+```
+
+Variable: longitud de radicular a los 150 días
+
+```{r}
+mod_longitud <- aov(longitud_150 ~ Clon * Sustrato, data = fb)
+summary(mod_longitud)
+anova(mod_longitud)
+plot (mod_longitud)
+
+```
+
+#-----------------TUKEY para altura a los 30 días———–
+
+```{r}
+# Comparar sustratos (4 niveles)
+TukeyHSD(mod_altura, "Sustrato")
+
+# Comparar clones (2 niveles)
+TukeyHSD(mod_altura, "Clon")
+```
+
+```{r}
+library(agricolae)
+
+# --- Sobre la interacción (recomendado si A×B significativa) ---
+fb <- fb %>%
+  mutate(Interaccion = interaction(Clon, Sustrato))
+
+mod_int <- aov(altura_30 ~ Interaccion, data = fb)
+LSD.test(mod_int, "Interaccion", group = TRUE, console = TRUE)
+
+# --- Sobre sustrato (si A×B NO significativa) ---
+LSD.test(mod_altura, "Sustrato", group = TRUE, console = TRUE)
+
+# --- Sobre clon (si A×B NO significativa) ---
+LSD.test(mod_altura, "Clon", group = TRUE, console = TRUE)
+```
+
+Grafica ggplot2
+
+```{r}
+library(ggplot2)
+
+ggplot(fb, aes(x = Sustrato, y = altura_30,
+               color = Clon, group = Clon)) +
+  stat_summary(fun = mean, geom = "point", size = 3) +
+  stat_summary(fun = mean, geom = "line", size = 1) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.2) +
+  labs(
+    title = "Interacción Clon × Sustrato — Altura 30 días",
+    x = "Sustrato",
+    y = "Altura 30 días (cm)",
+    color = "Clon"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+#-----------------TUKEY para diametro a los 60 días———–
+
+```{r}
+# --- Sobre la interacción (recomendado si A×B significativa) ---
+fb <- fb %>%
+  mutate(Interaccion = interaction(Clon, Sustrato))
+
+mod_int <- aov(diametro_60 ~ Interaccion, data = fb)
+LSD.test(mod_int, "Interaccion", group = TRUE, console = TRUE)
+
+# --- Sobre sustrato (si A×B NO significativa) ---
+LSD.test(mod_diametro, "Sustrato", group = TRUE, console = TRUE)
+
+# --- Sobre clon (si A×B NO significativa) ---
+LSD.test(mod_diametro, "Clon", group = TRUE, console = TRUE)
+```
+
+```{r}
+ggplot(fb, aes(x = Sustrato, y = diametro_60,
+               color = Clon, group = Clon)) +
+  stat_summary(fun = mean, geom = "point", size = 3) +
+  stat_summary(fun = mean, geom = "line", size = 1) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.2) +
+  labs(
+    title = "Interacción Clon × Sustrato — Diametro 60 días",
+    x = "Sustrato",
+    y = "Diametro 60 días (mm)",
+    color = "Clon"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+#-----------------TUKEY para longitud radicular a los 150 días———–
+
+```{r}
+# --- Sobre la interacción (recomendado si A×B significativa) ---
+fb <- fb %>%
+  mutate(Interaccion = interaction(Clon, Sustrato))
+
+mod_int <- aov(longitud_150 ~ Interaccion, data = fb)
+LSD.test(mod_int, "Interaccion", group = TRUE, console = TRUE)
+
+# --- Sobre sustrato (si A×B NO significativa) ---
+LSD.test(mod_longitud, "Sustrato", group = TRUE, console = TRUE)
+
+# --- Sobre clon (si A×B NO significativa) ---
+LSD.test(mod_longitud, "Clon", group = TRUE, console = TRUE)
+```
+
+#-------------------grafica——————–
+
+```{r}
+ggplot(fb, aes(x = Sustrato, y = longitud_150,
+               color = Clon, group = Clon)) +
+  stat_summary(fun = mean, geom = "point", size = 3) +
+  stat_summary(fun = mean, geom = "line", size = 1) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.2) +
+  labs(
+    title = "Interacción Clon × Sustrato — Longitud 150 días",
+    x = "Sustrato",
+    y = "Longitud 150 (cm)",
+    color = "Clon"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+```{r}
+mc_i <- mod_diametro %>% 
+  emmeans(~ Clon | Sustrato) %>% 
+  cld(Letters = letters, reversed = TRUE) %>% 
+  mutate(across(".group", trimws)) %>% 
+  mutate(across(".group", tolower)) %>% 
+  rename(sig_i = ".group")
+
+mc_o <- mod_diametro %>% 
+  emmeans(~ Clon | Sustrato) %>% 
+  cld(Letters = letters, reversed = TRUE) %>% 
+  mutate(across(".group", trimws)) %>% 
+  mutate(across(".group", toupper)) %>% 
+  rename(sig_o = ".group")
+
+mc <- merge(mc_i, mc_o) %>% 
+  unite(col = "sig", c("sig_i", "sig_o"), sep = "")
+
+grafico
+
+```
+
+```         
+```
+
+```{r}
+mi_grafico <- mc %>%
+  plot_smr(type = "line",
+           x = "Sustrato",
+           y = "emmean",
+           group = "Clon",
+           sig = "sig",
+           sigsize = 2,
+           error = "SE"
+           )
+
+# 2. Guardar especificando tamaño y resolución
+ggsave("grafico_anturios.png", 
+       plot = mi_grafico,
+       width = 8,    # pulgadas
+       height = 6,   # pulgadas
+       dpi = 300)
+```
+
+```         
+```
